@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>币安西游 · 可运行原型</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="hero">
+    <h1>币安西游（Binance Odyssey）</h1>
+    <p>梦幻西游风格 × Web3 叙事 的链游可运行原型</p>
+    <button id="startBtn">开始取经</button>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <h2>三章主线</h2>
+      <ul id="chapters" class="chapter-list"></ul>
+    </section>
+
+    <section class="panel">
+      <h2>场景地图</h2>
+      <div id="sceneCards" class="grid"></div>
+      <article id="sceneDetail" class="detail"></article>
+    </section>
+
+    <section class="panel">
+      <h2>核心人物</h2>
+      <div id="characterTabs" class="tabs"></div>
+      <article id="characterDetail" class="detail"></article>
+    </section>
+
+    <section class="panel two-col">
+      <div>
+        <h2>今日玩法循环</h2>
+        <ol id="loops"></ol>
+      </div>
+      <div>
+        <h2>双代币经济</h2>
+        <div id="tokens"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>挖宝图玩法</h2>
+      <p class="sub">接取宝图任务后，按照线索前往场景挖掘，可触发战斗、机关或稀有奖励。</p>
+      <div class="treasure-actions">
+        <button id="newTreasureBtn">领取新宝图</button>
+        <button id="digTreasureBtn">开始挖宝</button>
+      </div>
+      <article id="treasureDetail" class="detail"></article>
+      <ul id="treasureLog" class="treasure-log"></ul>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <small>Prototype v0.1 · 可直接用于演示/路演</small>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
