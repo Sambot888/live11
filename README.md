@@ -49,3 +49,14 @@ run_local.bat
 - `code=4001` 表示你在钱包弹窗里点了拒绝。
 - 若显示“没有 window.ethereum provider”，说明当前浏览器/环境没有注入扩展（常见于内置WebView）。
 - Binance Wallet 可走 `switchNetwork("bsc-mainnet")` 兼容路径，已在代码中增加。
+
+
+### 新增：钱包一键自检向导
+
+- 点击“钱包一键自检”会输出：
+  - `secureContext`
+  - 是否检测到 `window.ethereum`
+  - provider 数量与名称
+  - `eth_accounts` 返回数量
+  - `chainId` 获取结果
+- 这能快速判断是“扩展未注入”“账户未授权”还是“链切换失败”。
