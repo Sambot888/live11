@@ -48,6 +48,7 @@ const state = {
   providers: [],
   provider: null,
   providerName: "未检测",
+  walletDebug: "",
   frame: 0,
   agentTimer: null,
   lastAttackAt: 0,
@@ -98,68 +99,76 @@ function updateGameState(title, body) {
 }
 
 function updateWalletState(title, body) {
-  ui.walletState.innerHTML = `<strong>${title}</strong><br>${body}<br>钱包: ${state.providerName}<br>链: ${state.chainId || "未连接"}<br>地址: ${state.walletAddress || "未连接"}`;
+  const debug = state.walletDebug ? `<br><em>调试：${state.walletDebug}</em>` : "";
+  ui.walletState.innerHTML = `<strong>${title}</strong><br>${body}<br>钱包: ${state.providerName}<br>链: ${state.chainId || "未连接"}<br>地址: ${state.walletAddress || "未连接"}${debug}`;
 }
 
 function updateAgentState(title, body) {
   ui.agentState.innerHTML = `<strong>${title}</strong><br>${body}`;
 }
 
+function providerLabel(p, idx) {
+  if (p.isMetaMask) return "MetaMask";
+  if (p.isOkxWallet || p.isOKExWallet) return "OKX Wallet";
+  if (p.isBinanceChain) return "Binance Wallet";
+  return `EVM Wallet ${idx + 1}`;
+}
+
 function scanProviders() {
-  const candidates = [];
+  const list = [];
   const eth = window.ethereum;
-  if (eth?.providers?.length) candidates.push(...eth.providers);
-  if (eth) candidates.push(eth);
-  if (window.BinanceChain) candidates.push(window.BinanceChain);
+
+  if (eth?.providers?.length) list.push(...eth.providers);
+  if (eth) list.push(eth);
+  if (window.BinanceChain) list.push(window.BinanceChain);
 
   const unique = [];
   const seen = new Set();
-  for (const p of candidates) {
-    if (!p) continue;
-    const id = p.isMetaMask ? "metamask" : p.isOkxWallet ? "okx" : p.isBinanceChain ? "binance" : `evm_${unique.length}`;
-    if (!seen.has(id)) { seen.add(id); unique.push({ id, provider: p }); }
-  }
+  list.forEach((p, i) => {
+    if (!p) return;
+    const id = p.isMetaMask ? "metamask" : (p.isOkxWallet || p.isOKExWallet) ? "okx" : p.isBinanceChain ? "binance" : `evm_${i}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    unique.push({ id, provider: p, name: providerLabel(p, i) });
+  });
 
   state.providers = unique;
   ui.providerSelect.innerHTML = "";
+
   if (!unique.length) {
     const opt = document.createElement("option");
     opt.textContent = "未检测到钱包扩展";
     ui.providerSelect.appendChild(opt);
     state.provider = null;
     state.providerName = "未检测到";
-    updateWalletState("未检测到钱包", "请安装并启用 MetaMask / OKX / Binance Wallet。\n");
+    state.walletDebug = "没有 window.ethereum provider";
+    updateWalletState("未检测到钱包", "请在本机 Chrome/Edge 中安装并启用 MetaMask/OKX/Binance Wallet。\n如果你在内嵌浏览器里打开，扩展可能不可用。");
     return;
   }
 
-  unique.forEach((entry, idx) => {
-    const p = entry.provider;
-    const name = p.isMetaMask ? "MetaMask" : p.isOkxWallet ? "OKX Wallet" : p.isBinanceChain ? "Binance Wallet" : `EVM Wallet ${idx + 1}`;
+  unique.forEach((entry) => {
     const opt = document.createElement("option");
     opt.value = entry.id;
-    opt.textContent = name;
+    opt.textContent = entry.name;
     ui.providerSelect.appendChild(opt);
   });
 
   selectProvider(unique[0].id);
+  state.walletDebug = `providers=${unique.map((x) => x.name).join(",")}`;
   updateWalletState("检测成功", "请选择 Provider 后点击连接钱包。\n");
 }
 
 function selectProvider(id) {
   const found = state.providers.find((x) => x.id === id);
   state.provider = found?.provider || null;
+  state.providerName = found?.name || "未检测";
   if (!state.provider) return;
 
-  state.providerName = state.provider.isMetaMask
-    ? "MetaMask"
-    : state.provider.isOkxWallet
-      ? "OKX Wallet"
-      : state.provider.isBinanceChain
-        ? "Binance Wallet"
-        : "EVM Wallet";
+  try {
+    state.provider.removeAllListeners?.("accountsChanged");
+    state.provider.removeAllListeners?.("chainChanged");
+  } catch (_) {}
 
-  state.provider.removeAllListeners?.("accountsChanged");
-  state.provider.removeAllListeners?.("chainChanged");
   state.provider.on?.("accountsChanged", (accounts) => {
     state.walletAddress = accounts?.[0] || null;
     updateWalletState("账户变化", "账户已更新。\n");
@@ -170,15 +179,47 @@ function selectProvider(id) {
   });
 }
 
+async function requestAccounts(provider) {
+  if (provider.request) {
+    try {
+      return await provider.request({ method: "eth_requestAccounts" });
+    } catch (e1) {
+      if (provider.isBinanceChain && provider.requestAccounts) return await provider.requestAccounts();
+      if (provider.enable) return await provider.enable();
+      throw e1;
+    }
+  }
+  if (provider.requestAccounts) return await provider.requestAccounts();
+  if (provider.enable) return await provider.enable();
+  throw new Error("当前钱包 provider 不支持请求账户");
+}
+
+async function getChainId(provider) {
+  if (provider.request) {
+    try {
+      return await provider.request({ method: "eth_chainId" });
+    } catch (_) {
+      const net = await provider.request({ method: "net_version" });
+      return net ? `0x${Number(net).toString(16)}` : null;
+    }
+  }
+  return null;
+}
+
 async function connectWallet() {
-  if (!state.provider) { scanProviders(); if (!state.provider) return; }
+  if (!state.provider) {
+    scanProviders();
+    if (!state.provider) return;
+  }
   try {
-    const accounts = await state.provider.request({ method: "eth_requestAccounts" });
+    const accounts = await requestAccounts(state.provider);
     state.walletAddress = accounts?.[0] || null;
-    state.chainId = await state.provider.request({ method: "eth_chainId" });
+    state.chainId = await getChainId(state.provider);
+    state.walletDebug = `connected=${!!state.walletAddress}`;
     updateWalletState("连接成功", "钱包连接成功，可执行链上身份验证。\n");
     logEvent(`钱包连接成功：${state.providerName}`);
   } catch (e) {
+    state.walletDebug = e?.code ? `code=${e.code}` : "unknown error";
     updateWalletState("连接失败", e?.message || "用户拒绝或钱包异常");
   }
 }
@@ -186,16 +227,27 @@ async function connectWallet() {
 async function switchToBsc() {
   if (!state.provider) return updateWalletState("切换失败", "请先检测并连接钱包。\n");
   try {
-    await state.provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
-  } catch (err) {
-    if (err?.code === 4902) {
-      await state.provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x38", chainName: "BNB Smart Chain", nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 }, rpcUrls: ["https://bsc-dataseed.binance.org/"], blockExplorerUrls: ["https://bscscan.com"] }] });
+    if (state.provider.request) {
+      await state.provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
+    } else if (state.provider.switchNetwork) {
+      await state.provider.switchNetwork("bsc-mainnet");
     } else {
+      throw new Error("当前钱包不支持切链接口");
+    }
+  } catch (err) {
+    if (err?.code === 4902 && state.provider.request) {
+      await state.provider.request({
+        method: "wallet_addEthereumChain",
+        params: [{ chainId: "0x38", chainName: "BNB Smart Chain", nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 }, rpcUrls: ["https://bsc-dataseed.binance.org/"], blockExplorerUrls: ["https://bscscan.com"] }]
+      });
+    } else {
+      state.walletDebug = err?.code ? `switch code=${err.code}` : "switch error";
       updateWalletState("切换失败", err?.message || "钱包拒绝切换。");
       return;
     }
   }
-  state.chainId = await state.provider.request({ method: "eth_chainId" });
+
+  state.chainId = await getChainId(state.provider);
   updateWalletState("已切换 BSC", "当前网络为 BSC 主网（0x38）。");
 }
 
@@ -204,7 +256,9 @@ function createRole() {
   const className = ui.playerClass.value;
   if (!name) return updateGameState("创建失败", "请输入角色名。\n");
   state.role = { name, className, level: 1 };
-  player.hp = 100; player.exp = 0; player.gold = 100;
+  player.hp = 100;
+  player.exp = 0;
+  player.gold = 100;
   updateGameState("角色创建成功", `${name}（${className}）已创建。点击“进入游戏”开始冒险。`);
   logEvent(`创建角色：${name}（${className}）`);
 }
@@ -213,7 +267,8 @@ function enterGame() {
   if (!state.role) return updateGameState("无法进入", "请先创建角色。\n");
   state.inGame = true;
   state.paused = false;
-  player.x = 4 * TILE; player.y = 4 * TILE;
+  player.x = 4 * TILE;
+  player.y = 4 * TILE;
   updateGameState("已进入游戏", "已进入主城区域。移动、打怪、采集可成长。\n");
   logEvent("进入游戏世界");
 }
@@ -251,7 +306,10 @@ function enemyAi() {
     if (!e.alive) return;
     const dx = Math.cos((state.frame + i * 13) / 26) * 0.35;
     const dy = Math.sin((state.frame + i * 11) / 29) * 0.35;
-    if (!isBlocked(e.x + dx, e.y + dy)) { e.x += dx; e.y += dy; }
+    if (!isBlocked(e.x + dx, e.y + dy)) {
+      e.x += dx;
+      e.y += dy;
+    }
 
     const dist = Math.hypot(player.x - e.x, player.y - e.y);
     if (dist < 26 && Date.now() - state.lastAttackAt > 850) {
@@ -313,10 +371,22 @@ function update() {
   if (!state.inGame || state.paused) return;
 
   const s = player.speed;
-  if (state.keys.has("arrowup") || state.keys.has("w")) { tryMove(0, -s); player.dir = "up"; }
-  if (state.keys.has("arrowdown") || state.keys.has("s")) { tryMove(0, s); player.dir = "down"; }
-  if (state.keys.has("arrowleft") || state.keys.has("a")) { tryMove(-s, 0); player.dir = "left"; }
-  if (state.keys.has("arrowright") || state.keys.has("d")) { tryMove(s, 0); player.dir = "right"; }
+  if (state.keys.has("arrowup") || state.keys.has("w")) {
+    tryMove(0, -s);
+    player.dir = "up";
+  }
+  if (state.keys.has("arrowdown") || state.keys.has("s")) {
+    tryMove(0, s);
+    player.dir = "down";
+  }
+  if (state.keys.has("arrowleft") || state.keys.has("a")) {
+    tryMove(-s, 0);
+    player.dir = "left";
+  }
+  if (state.keys.has("arrowright") || state.keys.has("d")) {
+    tryMove(s, 0);
+    player.dir = "right";
+  }
 
   if (state.mouseTarget) {
     const dx = state.mouseTarget.x - player.x;
@@ -342,7 +412,7 @@ function update() {
 }
 
 function drawPlayerSprite(x, y) {
-  const blink = (Math.floor(state.frame / 20) % 2) ? "#ffd166" : "#ffe08a";
+  const blink = Math.floor(state.frame / 20) % 2 ? "#ffd166" : "#ffe08a";
   ctx.fillStyle = state.mounted ? "#9de0ff" : blink;
   ctx.fillRect(x - 7, y - 7, 14, 14);
   ctx.fillStyle = "#3a2700";
@@ -380,7 +450,7 @@ function draw() {
       const cell = map[y][x];
       if (cell === 1) ctx.fillStyle = "#3b5c96";
       else if (cell === 3) ctx.fillStyle = wave > 0.45 ? "#2b7cb5" : "#21699c";
-      else ctx.fillStyle = ((x + y) % 2 === 0) ? "#1e4b2f" : "#245a37";
+      else ctx.fillStyle = (x + y) % 2 === 0 ? "#1e4b2f" : "#245a37";
       ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
 
       if (cell === 2) {
@@ -428,7 +498,7 @@ function draw() {
     ctx.fillRect(ui.canvas.width - 172, 8, 164, 106);
     ctx.fillStyle = "#8cc6ff";
     ctx.fillText("长安主城·东门", ui.canvas.width - 164, 28);
-    ctx.fillText(`小妖剩余: ${enemies.filter(e => e.alive).length}`, ui.canvas.width - 164, 48);
+    ctx.fillText(`小妖剩余: ${enemies.filter((e) => e.alive).length}`, ui.canvas.width - 164, 48);
     ctx.fillText("OpenClaw: 可托管", ui.canvas.width - 164, 68);
     ctx.fillText(`任务进度: ${state.quest.collect.got}/${state.quest.collect.need}`, ui.canvas.width - 164, 88);
   }
@@ -443,7 +513,10 @@ function findNearestCellValue(value) {
       const cx = x * TILE + TILE / 2;
       const cy = y * TILE + TILE / 2;
       const d = Math.hypot(player.x - cx, player.y - cy);
-      if (d < bestDist) { bestDist = d; best = { x: cx, y: cy }; }
+      if (d < bestDist) {
+        bestDist = d;
+        best = { x: cx, y: cy };
+      }
     }
   }
   return best;
@@ -461,7 +534,7 @@ function stepAgent() {
     if (alive) state.mouseTarget = { x: alive.x, y: alive.y };
     updateAgentState("运行中（战斗）", "自动接近敌人并触发战斗。\n");
   } else {
-    const target = Math.random() > 0.5 ? findNearestCellValue(2) : (alive ? { x: alive.x, y: alive.y } : null);
+    const target = Math.random() > 0.5 ? findNearestCellValue(2) : alive ? { x: alive.x, y: alive.y } : null;
     if (target) state.mouseTarget = target;
     updateAgentState("运行中（均衡）", "在采集与战斗间切换。\n");
   }
@@ -503,8 +576,13 @@ document.getElementById("connectWalletBtn").addEventListener("click", connectWal
 document.getElementById("switchBscBtn").addEventListener("click", switchToBsc);
 document.getElementById("createRoleBtn").addEventListener("click", createRole);
 document.getElementById("enterGameBtn").addEventListener("click", enterGame);
-document.getElementById("pauseBtn").addEventListener("click", () => { state.paused = !state.paused; logEvent(state.paused ? "游戏已暂停" : "继续游戏"); });
-document.getElementById("toggleHudBtn").addEventListener("click", () => { state.showHud = !state.showHud; });
+document.getElementById("pauseBtn").addEventListener("click", () => {
+  state.paused = !state.paused;
+  logEvent(state.paused ? "游戏已暂停" : "继续游戏");
+});
+document.getElementById("toggleHudBtn").addEventListener("click", () => {
+  state.showHud = !state.showHud;
+});
 document.getElementById("startAgentBtn").addEventListener("click", startAgent);
 document.getElementById("stopAgentBtn").addEventListener("click", stopAgent);
 document.getElementById("attackBtn").addEventListener("click", doAttack);
