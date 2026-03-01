@@ -1,94 +1,76 @@
-<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>币安西游 · 像素可玩原型</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <header class="hero">
-    <h1>币安西游（Binance Odyssey）</h1>
-    <p>优化版：真实感像素场景、角色动画、OpenClaw 自动代理、BSC 钱包多 Provider 连接</p>
-  </header>
+<main class="layout">
+  <section class="panel game-panel">
+    <div class="toolbar">
+      <button id="createRoleBtn">创建角色</button>
+      <button id="enterGameBtn">进入游戏</button>
+      <button id="pauseBtn">暂停/继续</button>
+      <button id="toggleHudBtn">显示/隐藏HUD</button>
+      <span id="gameTips">WASD/方向键移动，鼠标点击自动移动；靠近怪物自动战斗。</span>
+    </div>
+    <div class="game-wrap">
+      <canvas id="gameCanvas" width="960" height="540" aria-label="像素游戏世界"></canvas>
+      <div class="ops-panel" id="opsPanel">
+        <button id="attackBtn">攻击</button>
+        <button id="dashBtn">冲刺</button>
+        <button id="interactBtn">交互</button>
+        <button id="mountBtn">上/下坐骑</button>
+      </div>
+      <div class="quest-panel" id="questPanel"></div>
+    </div>
+  </section>
 
-  <main class="layout">
-    <section class="panel game-panel">
-      <div class="toolbar">
-        <button id="createRoleBtn">创建角色</button>
-        <button id="enterGameBtn">进入游戏</button>
-        <button id="pauseBtn">暂停/继续</button>
-        <button id="toggleHudBtn">显示/隐藏HUD</button>
-        <span id="gameTips">WASD/方向键移动，鼠标点击自动移动；靠近怪物自动战斗。</span>
-      </div>
-      <div class="game-wrap">
-        <canvas id="gameCanvas" width="960" height="540" aria-label="pixel game world"></canvas>
-        <div class="ops-panel" id="opsPanel">
-          <button id="attackBtn">攻击</button>
-          <button id="dashBtn">冲刺</button>
-          <button id="interactBtn">交互</button>
-          <button id="mountBtn">上/下坐骑</button>
-        </div>
-        <div class="quest-panel" id="questPanel"></div>
-      </div>
+  <aside class="side">
+    <section class="panel">
+      <h2>角色</h2>
+      <label>名字 <input id="playerName" placeholder="链上悟空" /></label>
+      <label>门派
+        <select id="playerClass">
+          <option value="天策">天策（战士）</option>
+          <option value="灵台">灵台（法师）</option>
+          <option value="普陀">普陀（辅助）</option>
+          <option value="方寸">方寸（控制）</option>
+        </select>
+      </label>
+      <div id="gameState" class="detail"></div>
     </section>
 
-    <aside class="side">
-      <section class="panel">
-        <h2>角色</h2>
-        <label>名字 <input id="playerName" placeholder="链上悟空" /></label>
-        <label>门派
-          <select id="playerClass">
-            <option value="天策">天策（战士）</option>
-            <option value="灵台">灵台（法师）</option>
-            <option value="普陀">普陀（辅助）</option>
-            <option value="方寸">方寸（控制）</option>
-          </select>
-        </label>
-        <div id="gameState" class="detail"></div>
-      </section>
+    <section class="panel">
+      <h2>BSC 钱包</h2>
+      <label>钱包 Provider
+        <select id="providerSelect"></select>
+      </label>
+      <div class="row">
+        <button id="detectWalletBtn">检测钱包</button>
+        <button id="connectWalletBtn">连接钱包</button>
+        <button id="switchBscBtn">切换 BSC</button>
+      </div>
+      <div id="walletState" class="detail"></div>
+    </section>
 
-      <section class="panel">
-        <h2>BSC 钱包</h2>
-        <label>钱包 Provider
-          <select id="providerSelect"></select>
-        </label>
-        <div class="row">
-          <button id="detectWalletBtn">检测钱包</button>
-          <button id="connectWalletBtn">连接钱包</button>
-          <button id="switchBscBtn">切换 BSC</button>
-        </div>
-        <div id="walletState" class="detail"></div>
-      </section>
+    <section class="panel">
+      <h2>OpenClaw 自动代理</h2>
+      <label>策略
+        <select id="agentMode">
+          <option value="farm">刷资源</option>
+          <option value="combat">打怪升级</option>
+          <option value="balanced">均衡推进</option>
+        </select>
+      </label>
+      <div class="row">
+        <button id="startAgentBtn">启动代理</button>
+        <button id="stopAgentBtn">停止代理</button>
+      </div>
+      <div id="agentState" class="detail"></div>
+    </section>
 
-      <section class="panel">
-        <h2>OpenClaw 自动代理</h2>
-        <label>策略
-          <select id="agentMode">
-            <option value="farm">刷资源</option>
-            <option value="combat">打怪升级</option>
-            <option value="balanced">均衡推进</option>
-          </select>
-        </label>
-        <div class="row">
-          <button id="startAgentBtn">启动代理</button>
-          <button id="stopAgentBtn">停止代理</button>
-        </div>
-        <div id="agentState" class="detail"></div>
-      </section>
+    <section class="panel">
+      <h2>10亿代币经济学（BOY）</h2>
+      <ul id="tokenomics"></ul>
+    </section>
 
-      <section class="panel">
-        <h2>10亿代币经济学（BOY）</h2>
-        <ul id="tokenomics"></ul>
-      </section>
-
-      <section class="panel">
-        <h2>事件日志</h2>
-        <ul id="eventLog" class="log"></ul>
-      </section>
-    </aside>
-  </main>
-
-  <script src="app.js"></script>
-</body>
-</html>
+    <section class="panel">
+      <h2>事件日志</h2>
+      <ul id="eventLog" class="log"></ul>
+    </section>
+  </aside>
+</main>
