@@ -8,161 +8,214 @@ const tokenomics = [
   "市场合作 10%：100,000,000"
 ];
 
+const ui = {
+  tokenomics: document.getElementById("tokenomics"),
+  gameState: document.getElementById("gameState"),
+  walletState: document.getElementById("walletState"),
+  eventLog: document.getElementById("eventLog"),
+  providerSelect: document.getElementById("providerSelect"),
+  agentMode: document.getElementById("agentMode"),
+  agentState: document.getElementById("agentState"),
+  playerName: document.getElementById("playerName"),
+  playerClass: document.getElementById("playerClass"),
+  questPanel: document.getElementById("questPanel"),
+  canvas: document.getElementById("gameCanvas")
+};
+
 tokenomics.forEach((line) => {
   const li = document.createElement("li");
   li.textContent = line;
-  document.getElementById("tokenomics").appendChild(li);
+  ui.tokenomics.appendChild(li);
 });
 
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+const ctx = ui.canvas.getContext("2d");
 const TILE = 24;
 const MAP_W = 40;
 const MAP_H = 22;
 const map = generateMap(MAP_W, MAP_H);
+const scene = generateSceneObjects();
 
 const state = {
   role: null,
   inGame: false,
   paused: false,
+  showHud: true,
+  mounted: false,
   keys: new Set(),
   mouseTarget: null,
-  walletAddress: null,
   chainId: null,
-  providerName: "未检测",
+  walletAddress: null,
+  providers: [],
   provider: null,
-  frame: 0
+  providerName: "未检测",
+  frame: 0,
+  agentTimer: null,
+  lastAttackAt: 0,
+  quest: {
+    collect: { need: 8, got: 0 },
+    kill: { need: 3, got: 0 },
+    talkNpc: false
+  }
 };
 
-const player = {
-  x: 4 * TILE,
-  y: 4 * TILE,
-  size: 14,
-  speed: 2.2,
-  hp: 100,
-  exp: 0,
-  gold: 100
-};
-
+const player = { x: 4 * TILE, y: 4 * TILE, size: 14, speed: 2.0, hp: 100, exp: 0, gold: 100, dir: "down" };
 const npc = { x: 12 * TILE, y: 9 * TILE, size: 14 };
+const enemies = [
+  { x: 22 * TILE, y: 8 * TILE, hp: 20, maxHp: 20, alive: true },
+  { x: 30 * TILE, y: 14 * TILE, hp: 22, maxHp: 22, alive: true },
+  { x: 16 * TILE, y: 16 * TILE, hp: 18, maxHp: 18, alive: true }
+];
+
+function generateSceneObjects() {
+  const trees = [];
+  const houses = [
+    { x: 6 * TILE, y: 4 * TILE, w: 3 * TILE, h: 2 * TILE },
+    { x: 33 * TILE, y: 5 * TILE, w: 4 * TILE, h: 2 * TILE }
+  ];
+  for (let i = 0; i < 24; i++) {
+    trees.push({ x: Math.floor(Math.random() * MAP_W) * TILE + 12, y: Math.floor(Math.random() * MAP_H) * TILE + 12 });
+  }
+  return { trees, houses };
+}
 
 function logEvent(text) {
   const li = document.createElement("li");
   li.textContent = `${new Date().toLocaleTimeString()} - ${text}`;
-  document.getElementById("eventLog").prepend(li);
+  ui.eventLog.prepend(li);
+}
+
+function refreshQuestPanel() {
+  ui.questPanel.innerHTML = [
+    `<strong>任务追踪</strong>`,
+    `采集灵石：${state.quest.collect.got}/${state.quest.collect.need}`,
+    `击败小妖：${state.quest.kill.got}/${state.quest.kill.need}`,
+    `与NPC对话：${state.quest.talkNpc ? "已完成" : "未完成"}`
+  ].join("<br>");
 }
 
 function updateGameState(title, body) {
-  document.getElementById("gameState").innerHTML = `<strong>${title}</strong><br/>${body}`;
+  ui.gameState.innerHTML = `<strong>${title}</strong><br>${body}`;
 }
 
 function updateWalletState(title, body) {
-  document.getElementById("walletState").innerHTML =
-    `<strong>${title}</strong><br/>${body}<br/>钱包: ${state.providerName}<br/>链: ${state.chainId || "未连接"}<br/>地址: ${state.walletAddress || "未连接"}`;
+  ui.walletState.innerHTML = `<strong>${title}</strong><br>${body}<br>钱包: ${state.providerName}<br>链: ${state.chainId || "未连接"}<br>地址: ${state.walletAddress || "未连接"}`;
 }
 
-function detectProvider() {
+function updateAgentState(title, body) {
+  ui.agentState.innerHTML = `<strong>${title}</strong><br>${body}`;
+}
+
+function scanProviders() {
+  const candidates = [];
   const eth = window.ethereum;
-  let provider = null;
-  let name = "未检测到";
+  if (eth?.providers?.length) candidates.push(...eth.providers);
+  if (eth) candidates.push(eth);
+  if (window.BinanceChain) candidates.push(window.BinanceChain);
 
-  if (eth?.providers?.length) {
-    provider = eth.providers.find((p) => p.isMetaMask) || eth.providers.find((p) => p.isOkxWallet) || eth.providers[0];
-    if (provider?.isMetaMask) name = "MetaMask";
-    else if (provider?.isOkxWallet) name = "OKX Wallet";
-    else if (provider?.isBinanceChain) name = "Binance Wallet";
-    else name = "EVM Wallet";
-  } else if (eth) {
-    provider = eth;
-    if (eth.isMetaMask) name = "MetaMask";
-    else if (eth.isOkxWallet) name = "OKX Wallet";
-    else if (eth.isBinanceChain) name = "Binance Wallet";
-    else name = "EVM Wallet";
-  } else if (window.BinanceChain) {
-    provider = window.BinanceChain;
-    name = "Binance Wallet";
+  const unique = [];
+  const seen = new Set();
+  for (const p of candidates) {
+    if (!p) continue;
+    const id = p.isMetaMask ? "metamask" : p.isOkxWallet ? "okx" : p.isBinanceChain ? "binance" : `evm_${unique.length}`;
+    if (!seen.has(id)) { seen.add(id); unique.push({ id, provider: p }); }
   }
 
-  state.provider = provider;
-  state.providerName = name;
-
-  if (!provider) {
-    updateWalletState("未检测到钱包", "请在浏览器安装并启用 MetaMask / OKX / Binance Wallet。\n注意：需要在当前页面授权扩展可见。\n");
-    return null;
+  state.providers = unique;
+  ui.providerSelect.innerHTML = "";
+  if (!unique.length) {
+    const opt = document.createElement("option");
+    opt.textContent = "未检测到钱包扩展";
+    ui.providerSelect.appendChild(opt);
+    state.provider = null;
+    state.providerName = "未检测到";
+    updateWalletState("未检测到钱包", "请安装并启用 MetaMask / OKX / Binance Wallet。\n");
+    return;
   }
 
-  provider.on?.("accountsChanged", (accounts) => {
+  unique.forEach((entry, idx) => {
+    const p = entry.provider;
+    const name = p.isMetaMask ? "MetaMask" : p.isOkxWallet ? "OKX Wallet" : p.isBinanceChain ? "Binance Wallet" : `EVM Wallet ${idx + 1}`;
+    const opt = document.createElement("option");
+    opt.value = entry.id;
+    opt.textContent = name;
+    ui.providerSelect.appendChild(opt);
+  });
+
+  selectProvider(unique[0].id);
+  updateWalletState("检测成功", "请选择 Provider 后点击连接钱包。\n");
+}
+
+function selectProvider(id) {
+  const found = state.providers.find((x) => x.id === id);
+  state.provider = found?.provider || null;
+  if (!state.provider) return;
+
+  state.providerName = state.provider.isMetaMask
+    ? "MetaMask"
+    : state.provider.isOkxWallet
+      ? "OKX Wallet"
+      : state.provider.isBinanceChain
+        ? "Binance Wallet"
+        : "EVM Wallet";
+
+  state.provider.removeAllListeners?.("accountsChanged");
+  state.provider.removeAllListeners?.("chainChanged");
+  state.provider.on?.("accountsChanged", (accounts) => {
     state.walletAddress = accounts?.[0] || null;
-    updateWalletState("账户变化", "钱包账户已更新。");
+    updateWalletState("账户变化", "账户已更新。\n");
   });
-  provider.on?.("chainChanged", (chainId) => {
+  state.provider.on?.("chainChanged", (chainId) => {
     state.chainId = chainId;
-    updateWalletState("链变化", "网络已切换。\n");
+    updateWalletState("网络变化", "链ID已更新。\n");
   });
-
-  updateWalletState("检测成功", "已识别钱包扩展，可点击“连接钱包”。\n");
-  return provider;
-}
-
-function createRole() {
-  const name = document.getElementById("playerName").value.trim();
-  const className = document.getElementById("playerClass").value;
-  if (!name) return updateGameState("创建失败", "请输入角色名");
-  state.role = { name, className, level: 1 };
-  player.hp = 100; player.exp = 0; player.gold = 100;
-  updateGameState("角色创建成功", `${name}（${className}）已创建，点击“进入游戏”开始冒险。`);
-  logEvent(`创建角色：${name}（${className}）`);
-}
-
-function enterGame() {
-  if (!state.role) return updateGameState("无法进入", "请先创建角色");
-  state.inGame = true;
-  state.paused = false;
-  player.x = 4 * TILE; player.y = 4 * TILE;
-  updateGameState("已进入游戏", "你已进入长安主城，使用键盘或鼠标控制角色。靠近绿色像素点可拾取灵石。\n");
-  logEvent("进入游戏世界");
 }
 
 async function connectWallet() {
-  const provider = state.provider || detectProvider();
-  if (!provider) return;
+  if (!state.provider) { scanProviders(); if (!state.provider) return; }
   try {
-    const accounts = await provider.request({ method: "eth_requestAccounts" });
+    const accounts = await state.provider.request({ method: "eth_requestAccounts" });
     state.walletAddress = accounts?.[0] || null;
-    state.chainId = await provider.request({ method: "eth_chainId" });
-    updateWalletState("连接成功", "钱包已连接，可进行链上身份验证。\n");
-    logEvent("钱包连接成功");
+    state.chainId = await state.provider.request({ method: "eth_chainId" });
+    updateWalletState("连接成功", "钱包连接成功，可执行链上身份验证。\n");
+    logEvent(`钱包连接成功：${state.providerName}`);
   } catch (e) {
     updateWalletState("连接失败", e?.message || "用户拒绝或钱包异常");
   }
 }
 
 async function switchToBsc() {
-  const provider = state.provider || detectProvider();
-  if (!provider) return;
-
+  if (!state.provider) return updateWalletState("切换失败", "请先检测并连接钱包。\n");
   try {
-    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
+    await state.provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] });
   } catch (err) {
     if (err?.code === 4902) {
-      await provider.request({
-        method: "wallet_addEthereumChain",
-        params: [{
-          chainId: "0x38",
-          chainName: "BNB Smart Chain",
-          nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
-          rpcUrls: ["https://bsc-dataseed.binance.org/"],
-          blockExplorerUrls: ["https://bscscan.com"]
-        }]
-      });
+      await state.provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x38", chainName: "BNB Smart Chain", nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 }, rpcUrls: ["https://bsc-dataseed.binance.org/"], blockExplorerUrls: ["https://bscscan.com"] }] });
     } else {
-      updateWalletState("切换失败", err?.message || "钱包拒绝切换");
+      updateWalletState("切换失败", err?.message || "钱包拒绝切换。");
       return;
     }
   }
-  state.chainId = await provider.request({ method: "eth_chainId" });
-  updateWalletState("已切换BSC", "当前网络已切换到 BSC 主网（0x38）。");
-  logEvent("切换到 BSC 主网");
+  state.chainId = await state.provider.request({ method: "eth_chainId" });
+  updateWalletState("已切换 BSC", "当前网络为 BSC 主网（0x38）。");
+}
+
+function createRole() {
+  const name = ui.playerName.value.trim();
+  const className = ui.playerClass.value;
+  if (!name) return updateGameState("创建失败", "请输入角色名。\n");
+  state.role = { name, className, level: 1 };
+  player.hp = 100; player.exp = 0; player.gold = 100;
+  updateGameState("角色创建成功", `${name}（${className}）已创建。点击“进入游戏”开始冒险。`);
+  logEvent(`创建角色：${name}（${className}）`);
+}
+
+function enterGame() {
+  if (!state.role) return updateGameState("无法进入", "请先创建角色。\n");
+  state.inGame = true;
+  state.paused = false;
+  player.x = 4 * TILE; player.y = 4 * TILE;
+  updateGameState("已进入游戏", "已进入主城区域。移动、打怪、采集可成长。\n");
+  logEvent("进入游戏世界");
 }
 
 function generateMap(w, h) {
@@ -171,7 +224,8 @@ function generateMap(w, h) {
     for (let x = 0; x < w; x++) {
       if (x === 0 || y === 0 || x === w - 1 || y === h - 1) arr[y][x] = 1;
       if ((x % 9 === 0 && y % 5 < 3) || (y % 7 === 0 && x % 11 === 3)) arr[y][x] = 1;
-      if (Math.random() < 0.03) arr[y][x] = 2;
+      if (Math.random() < 0.045) arr[y][x] = 2;
+      if ((x > 26 && x < 34 && y > 3 && y < 9) || (x > 4 && x < 10 && y > 13 && y < 17)) arr[y][x] = 3;
     }
   }
   arr[4][4] = 0;
@@ -181,7 +235,8 @@ function generateMap(w, h) {
 function isBlocked(px, py) {
   const tx = Math.floor(px / TILE);
   const ty = Math.floor(py / TILE);
-  return map[ty]?.[tx] === 1;
+  const cell = map[ty]?.[tx];
+  return cell === 1 || cell === 3;
 }
 
 function tryMove(dx, dy) {
@@ -191,44 +246,141 @@ function tryMove(dx, dy) {
   if (!isBlocked(player.x, ny)) player.y = ny;
 }
 
+function enemyAi() {
+  enemies.forEach((e, i) => {
+    if (!e.alive) return;
+    const dx = Math.cos((state.frame + i * 13) / 26) * 0.35;
+    const dy = Math.sin((state.frame + i * 11) / 29) * 0.35;
+    if (!isBlocked(e.x + dx, e.y + dy)) { e.x += dx; e.y += dy; }
+
+    const dist = Math.hypot(player.x - e.x, player.y - e.y);
+    if (dist < 26 && Date.now() - state.lastAttackAt > 850) {
+      e.hp -= state.mounted ? 8 : 5;
+      player.hp = Math.max(0, player.hp - 1);
+      state.lastAttackAt = Date.now();
+      logEvent("战斗中：你对小妖造成伤害");
+      if (e.hp <= 0) {
+        e.alive = false;
+        state.quest.kill.got += 1;
+        player.exp += 12;
+        player.gold += 16;
+        logEvent("击败小妖：+12 EXP, +16 金币");
+      }
+    }
+  });
+}
+
+function interactNpc() {
+  const d = Math.hypot(player.x - npc.x, player.y - npc.y);
+  if (d <= 34) {
+    state.quest.talkNpc = true;
+    logEvent("与NPC对话完成：获得补给包");
+    player.hp = Math.min(100, player.hp + 20);
+  } else {
+    logEvent("交互失败：请靠近 NPC");
+  }
+}
+
+function doAttack() {
+  const target = enemies.find((e) => e.alive && Math.hypot(player.x - e.x, player.y - e.y) < 50);
+  if (!target) return logEvent("攻击落空：附近没有敌人");
+  target.hp -= 7;
+  logEvent("主动攻击：造成 7 点伤害");
+  if (target.hp <= 0) {
+    target.alive = false;
+    state.quest.kill.got += 1;
+    player.exp += 12;
+    player.gold += 16;
+  }
+}
+
+function doDash() {
+  const step = state.mounted ? 22 : 16;
+  if (player.dir === "up") tryMove(0, -step);
+  if (player.dir === "down") tryMove(0, step);
+  if (player.dir === "left") tryMove(-step, 0);
+  if (player.dir === "right") tryMove(step, 0);
+  logEvent("冲刺成功");
+}
+
+function toggleMount() {
+  state.mounted = !state.mounted;
+  player.speed = state.mounted ? 2.8 : 2.0;
+  logEvent(state.mounted ? "已上坐骑：移动速度提升" : "已下坐骑");
+}
+
 function update() {
   if (!state.inGame || state.paused) return;
-  const speed = player.speed;
 
-  if (state.keys.has("arrowup") || state.keys.has("w")) tryMove(0, -speed);
-  if (state.keys.has("arrowdown") || state.keys.has("s")) tryMove(0, speed);
-  if (state.keys.has("arrowleft") || state.keys.has("a")) tryMove(-speed, 0);
-  if (state.keys.has("arrowright") || state.keys.has("d")) tryMove(speed, 0);
+  const s = player.speed;
+  if (state.keys.has("arrowup") || state.keys.has("w")) { tryMove(0, -s); player.dir = "up"; }
+  if (state.keys.has("arrowdown") || state.keys.has("s")) { tryMove(0, s); player.dir = "down"; }
+  if (state.keys.has("arrowleft") || state.keys.has("a")) { tryMove(-s, 0); player.dir = "left"; }
+  if (state.keys.has("arrowright") || state.keys.has("d")) { tryMove(s, 0); player.dir = "right"; }
 
   if (state.mouseTarget) {
     const dx = state.mouseTarget.x - player.x;
     const dy = state.mouseTarget.y - player.y;
     const dist = Math.hypot(dx, dy);
     if (dist < 4) state.mouseTarget = null;
-    else tryMove((dx / dist) * speed, (dy / dist) * speed);
+    else tryMove((dx / dist) * s, (dy / dist) * s);
   }
 
   const tx = Math.floor(player.x / TILE);
   const ty = Math.floor(player.y / TILE);
   if (map[ty]?.[tx] === 2) {
     map[ty][tx] = 0;
+    state.quest.collect.got += 1;
     player.gold += 8;
     player.exp += 3;
-    logEvent("拾取灵石 +8 金币, +3 经验");
+    logEvent("拾取灵石：+8 金币, +3 经验");
   }
 
+  enemyAi();
+  refreshQuestPanel();
   state.frame += 1;
+}
+
+function drawPlayerSprite(x, y) {
+  const blink = (Math.floor(state.frame / 20) % 2) ? "#ffd166" : "#ffe08a";
+  ctx.fillStyle = state.mounted ? "#9de0ff" : blink;
+  ctx.fillRect(x - 7, y - 7, 14, 14);
+  ctx.fillStyle = "#3a2700";
+  ctx.fillRect(x - 2, y - 2, 4, 4);
+}
+
+function drawSceneDecor() {
+  scene.houses.forEach((h) => {
+    ctx.fillStyle = "#6b4b2b";
+    ctx.fillRect(h.x, h.y, h.w, h.h);
+    ctx.fillStyle = "#a83d2f";
+    ctx.fillRect(h.x, h.y - 8, h.w, 8);
+  });
+
+  scene.trees.forEach((t) => {
+    ctx.fillStyle = "#1b5a33";
+    ctx.fillRect(t.x - 6, t.y - 10, 12, 12);
+    ctx.fillStyle = "#6b4b2b";
+    ctx.fillRect(t.x - 2, t.y + 2, 4, 6);
+  });
 }
 
 function draw() {
   if (!ctx) return;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const wave = (Math.sin(state.frame / 10) + 1) * 0.5;
+
+  const g = ctx.createLinearGradient(0, 0, 0, ui.canvas.height);
+  g.addColorStop(0, "#203f7f");
+  g.addColorStop(1, "#0f1e44");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, ui.canvas.width, ui.canvas.height);
 
   for (let y = 0; y < MAP_H; y++) {
     for (let x = 0; x < MAP_W; x++) {
       const cell = map[y][x];
-      if (cell === 1) ctx.fillStyle = "#2a467f";
-      else ctx.fillStyle = ((x + y) % 2 === 0) ? "#123160" : "#16396d";
+      if (cell === 1) ctx.fillStyle = "#3b5c96";
+      else if (cell === 3) ctx.fillStyle = wave > 0.45 ? "#2b7cb5" : "#21699c";
+      else ctx.fillStyle = ((x + y) % 2 === 0) ? "#1e4b2f" : "#245a37";
       ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
 
       if (cell === 2) {
@@ -238,16 +390,22 @@ function draw() {
     }
   }
 
-  // npc
+  drawSceneDecor();
+
   ctx.fillStyle = "#ff77d8";
   ctx.fillRect(npc.x - npc.size / 2, npc.y - npc.size / 2, npc.size, npc.size);
 
-  // player
-  const blink = (Math.floor(state.frame / 30) % 2) ? "#ffd166" : "#ffe083";
-  ctx.fillStyle = blink;
-  ctx.fillRect(player.x - player.size / 2, player.y - player.size / 2, player.size, player.size);
-  ctx.fillStyle = "#2d1c00";
-  ctx.fillRect(player.x - 2, player.y - 2, 4, 4);
+  enemies.forEach((e) => {
+    if (!e.alive) return;
+    ctx.fillStyle = "#ff6f61";
+    ctx.fillRect(e.x - 7, e.y - 7, 14, 14);
+    ctx.fillStyle = "#111";
+    ctx.fillRect(e.x - 8, e.y - 12, 16, 3);
+    ctx.fillStyle = "#f44";
+    ctx.fillRect(e.x - 8, e.y - 12, Math.max(0, (e.hp / e.maxHp) * 16), 3);
+  });
+
+  drawPlayerSprite(player.x, player.y);
 
   if (state.mouseTarget) {
     ctx.strokeStyle = "#6ee7ff";
@@ -256,23 +414,72 @@ function draw() {
     ctx.stroke();
   }
 
-  // hud
-  ctx.fillStyle = "rgba(3,8,20,0.8)";
-  ctx.fillRect(8, 8, 360, 76);
-  ctx.fillStyle = "#e7f1ff";
-  ctx.font = "14px Arial";
-  const roleLine = state.role ? `${state.role.name} Lv.${state.role.level} ${state.role.className}` : "未创建角色";
-  ctx.fillText(roleLine, 16, 28);
-  ctx.fillText(`HP ${player.hp} | EXP ${player.exp} | 金币 ${player.gold}`, 16, 48);
-  ctx.fillText(`状态: ${state.inGame ? (state.paused ? "暂停" : "游戏中") : "未进入"}`, 16, 68);
+  if (state.showHud) {
+    ctx.fillStyle = "rgba(3,8,20,0.78)";
+    ctx.fillRect(8, 8, 390, 82);
+    ctx.fillStyle = "#e7f1ff";
+    ctx.font = "14px Arial";
+    const roleLine = state.role ? `${state.role.name} Lv.${state.role.level} ${state.role.className}` : "未创建角色";
+    ctx.fillText(roleLine, 16, 28);
+    ctx.fillText(`HP ${player.hp} | EXP ${player.exp} | 金币 ${player.gold} | 坐骑 ${state.mounted ? "是" : "否"}`, 16, 48);
+    ctx.fillText(`状态: ${state.inGame ? (state.paused ? "暂停" : "游戏中") : "未进入"}`, 16, 68);
 
-  // minimap style block
-  ctx.fillStyle = "rgba(3,8,20,0.6)";
-  ctx.fillRect(canvas.width - 150, 8, 142, 100);
-  ctx.fillStyle = "#8cc6ff";
-  ctx.fillText("长安主城区", canvas.width - 140, 28);
-  ctx.fillText("任务: 2/5", canvas.width - 140, 48);
-  ctx.fillText("BOSS刷新: 08:30", canvas.width - 140, 68);
+    ctx.fillStyle = "rgba(3,8,20,0.62)";
+    ctx.fillRect(ui.canvas.width - 172, 8, 164, 106);
+    ctx.fillStyle = "#8cc6ff";
+    ctx.fillText("长安主城·东门", ui.canvas.width - 164, 28);
+    ctx.fillText(`小妖剩余: ${enemies.filter(e => e.alive).length}`, ui.canvas.width - 164, 48);
+    ctx.fillText("OpenClaw: 可托管", ui.canvas.width - 164, 68);
+    ctx.fillText(`任务进度: ${state.quest.collect.got}/${state.quest.collect.need}`, ui.canvas.width - 164, 88);
+  }
+}
+
+function findNearestCellValue(value) {
+  let best = null;
+  let bestDist = Infinity;
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      if (map[y][x] !== value) continue;
+      const cx = x * TILE + TILE / 2;
+      const cy = y * TILE + TILE / 2;
+      const d = Math.hypot(player.x - cx, player.y - cy);
+      if (d < bestDist) { bestDist = d; best = { x: cx, y: cy }; }
+    }
+  }
+  return best;
+}
+
+function stepAgent() {
+  if (!state.inGame || state.paused) return;
+  const mode = ui.agentMode.value;
+  const alive = enemies.find((e) => e.alive);
+  if (mode === "farm") {
+    const target = findNearestCellValue(2);
+    if (target) state.mouseTarget = target;
+    updateAgentState("运行中（刷资源）", "自动前往最近灵石并拾取。\n");
+  } else if (mode === "combat") {
+    if (alive) state.mouseTarget = { x: alive.x, y: alive.y };
+    updateAgentState("运行中（战斗）", "自动接近敌人并触发战斗。\n");
+  } else {
+    const target = Math.random() > 0.5 ? findNearestCellValue(2) : (alive ? { x: alive.x, y: alive.y } : null);
+    if (target) state.mouseTarget = target;
+    updateAgentState("运行中（均衡）", "在采集与战斗间切换。\n");
+  }
+}
+
+function startAgent() {
+  if (state.agentTimer) return;
+  state.agentTimer = setInterval(stepAgent, 1200);
+  updateAgentState("已启动", `OpenClaw 代理策略：${ui.agentMode.value}`);
+  logEvent(`OpenClaw 启动（${ui.agentMode.value}）`);
+}
+
+function stopAgent() {
+  if (!state.agentTimer) return;
+  clearInterval(state.agentTimer);
+  state.agentTimer = null;
+  updateAgentState("已停止", "代理已停止，恢复手动控制。\n");
+  logEvent("OpenClaw 已停止");
 }
 
 function loop() {
@@ -281,30 +488,33 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
-canvas.addEventListener("click", (e) => {
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  state.mouseTarget = {
-    x: (e.clientX - rect.left) * scaleX,
-    y: (e.clientY - rect.top) * scaleY
-  };
+ui.canvas.addEventListener("click", (e) => {
+  const rect = ui.canvas.getBoundingClientRect();
+  const scaleX = ui.canvas.width / rect.width;
+  const scaleY = ui.canvas.height / rect.height;
+  state.mouseTarget = { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
 });
-
 window.addEventListener("keydown", (e) => state.keys.add(e.key.toLowerCase()));
 window.addEventListener("keyup", (e) => state.keys.delete(e.key.toLowerCase()));
 
-document.getElementById("detectWalletBtn").addEventListener("click", detectProvider);
+ui.providerSelect.addEventListener("change", () => selectProvider(ui.providerSelect.value));
+document.getElementById("detectWalletBtn").addEventListener("click", scanProviders);
 document.getElementById("connectWalletBtn").addEventListener("click", connectWallet);
 document.getElementById("switchBscBtn").addEventListener("click", switchToBsc);
 document.getElementById("createRoleBtn").addEventListener("click", createRole);
 document.getElementById("enterGameBtn").addEventListener("click", enterGame);
-document.getElementById("pauseBtn").addEventListener("click", () => {
-  state.paused = !state.paused;
-  logEvent(state.paused ? "游戏已暂停" : "继续游戏");
-});
+document.getElementById("pauseBtn").addEventListener("click", () => { state.paused = !state.paused; logEvent(state.paused ? "游戏已暂停" : "继续游戏"); });
+document.getElementById("toggleHudBtn").addEventListener("click", () => { state.showHud = !state.showHud; });
+document.getElementById("startAgentBtn").addEventListener("click", startAgent);
+document.getElementById("stopAgentBtn").addEventListener("click", stopAgent);
+document.getElementById("attackBtn").addEventListener("click", doAttack);
+document.getElementById("dashBtn").addEventListener("click", doDash);
+document.getElementById("interactBtn").addEventListener("click", interactNpc);
+document.getElementById("mountBtn").addEventListener("click", toggleMount);
 
 updateGameState("等待创建角色", "创建角色后进入游戏即可操作人物。\n");
-detectProvider();
-logEvent("原型已加载：可创建角色并控制人物移动");
+updateAgentState("未启动", "选择策略后点击启动代理。\n");
+refreshQuestPanel();
+scanProviders();
+logEvent("原型已加载：优化场景 + 钱包检测 + OpenClaw 代理");
 loop();
