@@ -1,134 +1,38 @@
-body {
-  background: radial-gradient(circle at top, #172a5d 0, #070d1e 65%);
-  color: var(--text);
-  font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+:root{
+  --bg:#070d1e; --panel:#0f1a38; --line:#2a3f76; --text:#e6eeff; --sub:#93a5dd; --accent:#6ee7ff;
 }
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at top,#172a5d 0,#070d1e 65%);color:var(--text);font-family:Arial,"PingFang SC","Microsoft YaHei",sans-serif}
+.hero{text-align:center;padding:18px 14px}
+.hero h1{margin:0 0 6px}
+.hero p{margin:0;color:var(--sub)}
+.layout{display:grid;grid-template-columns:1fr 390px;gap:14px;max-width:1500px;margin:0 auto;padding:0 12px 14px}
+.panel{background:linear-gradient(180deg,#101b3a,#0c1632);border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.game-panel{padding:10px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+button{border:none;background:linear-gradient(90deg,#4f46e5,#06b6d4);color:white;border-radius:999px;padding:8px 12px;cursor:pointer;font-weight:700}
+button:hover{filter:brightness(1.08)}
+#gameTips{color:var(--sub);font-size:13px}
+.game-wrap{position:relative}
+#gameCanvas{width:100%;height:auto;background:#0b162f;border:1px solid #2f4785;border-radius:10px;image-rendering:pixelated}
+.ops-panel{position:absolute;left:12px;bottom:12px;display:grid;grid-template-columns:repeat(2,minmax(66px,1fr));gap:8px;width:190px}
+.ops-panel button{padding:8px;font-size:12px}
+.quest-panel{position:absolute;right:12px;bottom:12px;width:260px;background:rgba(6,14,35,.78);border:1px solid #3a57a0;border-radius:8px;padding:8px;font-size:12px;color:#cfe2ff}
+.skillbar{position:absolute;left:50%;transform:translateX(-50%);bottom:10px;display:flex;gap:8px;background:rgba(8,17,42,.8);border:1px solid #3a57a0;border-radius:10px;padding:6px 10px}
+.skill{width:34px;height:34px;border-radius:8px;padding:0;font-weight:900;background:linear-gradient(180deg,#203f80,#14274f)}
+.side{display:grid;gap:12px;align-content:start}
+h2{margin:0 0 8px;color:var(--accent);font-size:18px}
+label{display:block;color:var(--sub);font-size:13px;margin-top:8px}
+input,select{width:100%;margin-top:4px;background:#0b1330;border:1px solid #2f4785;color:var(--text);border-radius:8px;padding:8px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.detail{margin-top:8px;background:#0a132d;border:1px dashed #35508f;border-radius:8px;padding:8px;min-height:74px;font-size:13px;line-height:1.5}
+ul{padding-left:18px;margin:0}
+.log{max-height:220px;overflow:auto}
+.log li{margin-bottom:6px;color:#cbd8ff}
+.diag{max-height:130px;overflow:auto;margin-top:8px}
+.diag li{margin-bottom:4px;color:#c5d5ff;font-size:12px}
+@media (max-width:1280px){.layout{grid-template-columns:1fr}}
+@media (max-width:860px){.ops-panel,.quest-panel,.skillbar{position:static;transform:none;width:auto;margin-top:8px}}
 
-.hero {
-  text-align: center;
-  padding: 18px 14px;
-}
-
-.hero h1 {
-  margin: 0 0 6px;
-}
-
-.hero p {
-  margin: 0;
-  color: var(--sub);
-}
-
-.layout {
-  display: grid;
-  grid-template-columns: 1fr 380px;
-  gap: 14px;
-  max-width: 1480px;
-  margin: 0 auto;
-  padding: 0 12px 14px;
-}
-
-.panel {
-  background: linear-gradient(180deg, #101b3a, #0c1632);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
-}
-
-button {
-  border: none;
-  background: linear-gradient(90deg, #4f46e5, #06b6d4);
-  color: white;
-  border-radius: 999px;
-  padding: 8px 12px;
-  cursor: pointer;
-  font-weight: 700;
-}
-
-button:hover {
-  filter: brightness(1.08);
-}
-
-#gameCanvas {
-  width: 100%;
-  height: auto;
-  background: #0b162f;
-  border: 1px solid #2f4785;
-  border-radius: 10px;
-  image-rendering: pixelated;
-}
-
-.ops-panel {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(66px, 1fr));
-  gap: 8px;
-  width: 180px;
-}
-
-.ops-panel button {
-  padding: 8px;
-  font-size: 12px;
-}
-
-.quest-panel {
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  width: 260px;
-  background: rgba(6, 14, 35, .78);
-  border: 1px solid #3a57a0;
-  border-radius: 8px;
-  padding: 8px;
-  font-size: 12px;
-  color: #cfe2ff;
-}
-
-.side {
-  display: grid;
-  gap: 12px;
-  align-content: start;
-}
-
-h2 {
-  margin: 0 0 8px;
-  color: var(--accent);
-  font-size: 18px;
-}
-
-label {
-  display: block;
-  color: var(--sub);
-  font-size: 13px;
-  margin-top: 8px;
-}
-
-input, select {
-  width: 100%;
-  margin-top: 4px;
-  background: #0b1330;
-  border: 1px solid #2f4785;
-  color: var(--text);
-  border-radius: 8px;
-  padding: 8px;
-}
-
-.row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-}
-
-.detail {
-  margin-top: 8px;
-  background: #0a132d;
-  border: 1px dashed #35508f;
-  border-radius: 8px;
-  padding: 8px;
-  min-height: 74px;
-  font-size: 13px;
-  line-height: 1.5;
-}
+.chat-log{max-height:160px;overflow:auto}
+.chat-log li{margin-bottom:6px;color:#bde0ff;font-size:12px}
