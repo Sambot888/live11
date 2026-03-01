@@ -41,3 +41,11 @@ run_local.bat
 打开：
 
 - http://localhost:8000/
+
+
+### 钱包仍连不上时（新增）
+
+- 看右侧“调试”字段：会显示 provider 检测结果与错误码（例如 `code=4001`）。
+- `code=4001` 表示你在钱包弹窗里点了拒绝。
+- 若显示“没有 window.ethereum provider”，说明当前浏览器/环境没有注入扩展（常见于内置WebView）。
+- Binance Wallet 可走 `switchNetwork("bsc-mainnet")` 兼容路径，已在代码中增加。
