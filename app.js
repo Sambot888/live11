@@ -14,6 +14,7 @@ const ui = {
   walletState: document.getElementById("walletState"),
   walletDiag: document.getElementById("walletDiag"),
   eventLog: document.getElementById("eventLog"),
+  chatLog: document.getElementById("chatLog"),
   providerSelect: document.getElementById("providerSelect"),
   agentMode: document.getElementById("agentMode"),
   agentState: document.getElementById("agentState"),
@@ -76,6 +77,12 @@ function logEvent(text) {
   const li = document.createElement("li");
   li.textContent = `${new Date().toLocaleTimeString()} - ${text}`;
   ui.eventLog.prepend(li);
+}
+
+function pushChat(channel, text) {
+  const li = document.createElement("li");
+  li.textContent = `[${channel}] ${text}`;
+  ui.chatLog.prepend(li);
 }
 
 function setDiag(lines) {
@@ -295,6 +302,7 @@ function createRole() {
   player.hp = 100; player.exp = 0; player.gold = 100;
   updateGameState("角色创建成功", `${name}（${className}）已创建。点击“进入游戏”开始冒险。`);
   logEvent(`创建角色：${name}（${className}）`);
+  pushChat("系统", `${name} 加入了长安城。`);
 }
 
 function enterGame() {
@@ -305,18 +313,42 @@ function enterGame() {
   player.y = 4 * TILE;
   updateGameState("已进入游戏", "已进入主城区域。移动、打怪、采集可成长。\n");
   logEvent("进入游戏世界");
+  pushChat("世界", "欢迎来到长安，今日双倍任务已开启！");
 }
 
 function generateMap(w, h) {
   const arr = Array.from({ length: h }, () => Array.from({ length: w }, () => 0));
+
+  // 城墙边界
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (x === 0 || y === 0 || x === w - 1 || y === h - 1) arr[y][x] = 1;
-      if ((x % 9 === 0 && y % 5 < 3) || (y % 7 === 0 && x % 11 === 3)) arr[y][x] = 1;
-      if (Math.random() < 0.045) arr[y][x] = 2;
-      if ((x > 26 && x < 34 && y > 3 && y < 9) || (x > 4 && x < 10 && y > 13 && y < 17)) arr[y][x] = 3;
     }
   }
+
+  // 主干道（梦幻主城式十字路）
+  for (let x = 2; x < w - 2; x++) arr[Math.floor(h / 2)][x] = 4;
+  for (let y = 2; y < h - 2; y++) arr[y][Math.floor(w / 2)] = 4;
+
+  // 城内建筑阻挡区
+  for (let y = 3; y <= 7; y++) for (let x = 5; x <= 10; x++) arr[y][x] = 1;
+  for (let y = 4; y <= 8; y++) for (let x = 30; x <= 36; x++) arr[y][x] = 1;
+  for (let y = 13; y <= 17; y++) for (let x = 7; x <= 12; x++) arr[y][x] = 1;
+
+  // 水域
+  for (let y = 13; y <= 17; y++) for (let x = 26; x <= 33; x++) arr[y][x] = 3;
+
+  // 灵石点
+  const nodes = [[15,6],[18,9],[24,6],[19,14],[22,16],[28,11],[34,14],[9,11],[13,18]];
+  nodes.forEach(([x,y])=>{ if(arr[y][x]===0||arr[y][x]===4) arr[y][x]=2; });
+
+  // 主路周边地形归一
+  for (let y = 1; y < h-1; y++) {
+    for (let x = 1; x < w-1; x++) {
+      if (arr[y][x] === 0) arr[y][x] = 0;
+    }
+  }
+
   arr[4][4] = 0;
   return arr;
 }
@@ -363,6 +395,7 @@ function interactNpc() {
   if (d <= 34) {
     state.quest.talkNpc = true;
     logEvent("与NPC对话完成：获得补给包");
+    pushChat("NPC", "少侠，江湖路远，保重！");
     player.hp = Math.min(100, player.hp + 20);
   } else logEvent("交互失败：请靠近 NPC");
 }
@@ -471,6 +504,7 @@ function draw() {
       const cell = map[y][x];
       if (cell === 1) ctx.fillStyle = "#3b5c96";
       else if (cell === 3) ctx.fillStyle = wave > 0.45 ? "#2b7cb5" : "#21699c";
+      else if (cell === 4) ctx.fillStyle = ((x + y) % 2 === 0) ? "#8b6e4a" : "#7b5f3f";
       else ctx.fillStyle = ((x + y) % 2 === 0) ? "#1e4b2f" : "#245a37";
       ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
       if (cell === 2) {
@@ -599,4 +633,5 @@ updateAgentState("未启动", "选择策略后点击启动代理。\n");
 refreshQuestPanel();
 scanProviders();
 logEvent("原型已加载：梦幻主界面增强版");
+pushChat("系统", "连接钱包后可解锁链上身份标识。");
 loop();
