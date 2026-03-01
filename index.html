@@ -3,131 +3,61 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>币安西游 · 可运行原型</title>
+  <title>币安西游 · 像素可玩原型</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="hero">
     <h1>币安西游（Binance Odyssey）</h1>
-    <p>梦幻西游风格 × Web3 叙事 的链游可运行原型</p>
-    <button id="startBtn">开始取经</button>
+    <p>像素世界试玩版：键盘 WASD / 方向键、鼠标点击移动、钱包连接（BSC）</p>
   </header>
 
-  <main class="container">
-    <section class="panel two-col">
-      <div>
-        <h2>角色创建与进入游戏</h2>
-        <div class="form-grid">
-          <label>角色名 <input id="playerName" placeholder="例如：链上悟空" /></label>
-          <label>门派
-            <select id="playerClass">
-              <option value="天策">天策（战士）</option>
-              <option value="灵台">灵台（法师）</option>
-              <option value="普陀">普陀（辅助）</option>
-              <option value="方寸">方寸（控制）</option>
-            </select>
-          </label>
-        </div>
-        <div class="agent-controls">
-          <button id="createRoleBtn">创建角色</button>
-          <button id="enterGameBtn">进入游戏</button>
-        </div>
-        <article id="gameState" class="detail"></article>
+  <main class="layout">
+    <section class="panel game-panel">
+      <div class="toolbar">
+        <button id="createRoleBtn">创建角色</button>
+        <button id="enterGameBtn">进入游戏</button>
+        <button id="pauseBtn">暂停/继续</button>
+        <span id="gameTips">提示：WASD 或方向键移动，鼠标点击地图自动寻路。</span>
       </div>
-      <div>
-        <h2>BSC 钱包接口（基础）</h2>
-        <p class="sub">支持检测钱包、连接地址、尝试切换到 BSC 主网（ChainId 56）。</p>
-        <div class="agent-controls">
+      <canvas id="gameCanvas" width="960" height="540" aria-label="pixel game world"></canvas>
+    </section>
+
+    <aside class="side">
+      <section class="panel">
+        <h2>角色</h2>
+        <label>名字 <input id="playerName" placeholder="链上悟空" /></label>
+        <label>门派
+          <select id="playerClass">
+            <option value="天策">天策（战士）</option>
+            <option value="灵台">灵台（法师）</option>
+            <option value="普陀">普陀（辅助）</option>
+            <option value="方寸">方寸（控制）</option>
+          </select>
+        </label>
+        <div id="gameState" class="detail"></div>
+      </section>
+
+      <section class="panel">
+        <h2>BSC 钱包</h2>
+        <div class="row">
           <button id="connectWalletBtn">连接钱包</button>
           <button id="switchBscBtn">切换 BSC</button>
         </div>
-        <article id="walletState" class="detail"></article>
-      </div>
-    </section>
+        <div id="walletState" class="detail"></div>
+      </section>
 
-    <section class="panel">
-      <h2>三章主线</h2>
-      <ul id="chapters" class="chapter-list"></ul>
-    </section>
+      <section class="panel">
+        <h2>10亿代币经济学（BOY）</h2>
+        <ul id="tokenomics"></ul>
+      </section>
 
-    <section class="panel">
-      <h2>三界场景地图（可点击）</h2>
-      <p class="sub">先点地图节点，再看右侧场景详情与推荐玩法。</p>
-      <div class="map-layout">
-        <div id="mapCanvas" class="map-canvas"></div>
-        <article id="sceneDetail" class="detail"></article>
-      </div>
-      <h3>场景快捷入口</h3>
-      <div id="sceneCards" class="grid"></div>
-    </section>
-
-    <section class="panel two-col">
-      <div>
-        <h2>场景任务与副本</h2>
-        <ul id="questList" class="chapter-list"></ul>
-      </div>
-      <div>
-        <h2>世界事件时间轴</h2>
-        <ul id="eventTimeline" class="chapter-list"></ul>
-      </div>
-    </section>
-
-    <section class="panel two-col">
-      <div>
-        <h2>代币经济学（总量 10 亿）</h2>
-        <ul id="tokenomics" class="chapter-list"></ul>
-      </div>
-      <div>
-        <h2>双代币经济</h2>
-        <div id="tokens"></div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h2>OpenClaw 自动代理（实验）</h2>
-      <p class="sub">自动代理会按策略自动执行“日常→副本→挖宝”循环，并把决策写入日志。</p>
-      <div class="agent-controls">
-        <label>策略
-          <select id="agentStrategy">
-            <option value="balanced">平衡收益</option>
-            <option value="farm">资源优先</option>
-            <option value="pve">副本优先</option>
-          </select>
-        </label>
-        <button id="startAgentBtn">启动代理</button>
-        <button id="stopAgentBtn">停止代理</button>
-      </div>
-      <article id="agentState" class="detail"></article>
-      <ul id="agentLog" class="treasure-log"></ul>
-    </section>
-
-    <section class="panel">
-      <h2>核心人物</h2>
-      <div id="characterTabs" class="tabs"></div>
-      <article id="characterDetail" class="detail"></article>
-    </section>
-
-    <section class="panel two-col">
-      <div>
-        <h2>今日玩法循环</h2>
-        <ol id="loops"></ol>
-      </div>
-      <div>
-        <h2>挖宝图玩法</h2>
-        <p class="sub">接取宝图任务后，按照线索前往场景挖掘，可触发战斗、机关或稀有奖励。</p>
-        <div class="treasure-actions">
-          <button id="newTreasureBtn">领取新宝图</button>
-          <button id="digTreasureBtn">开始挖宝</button>
-        </div>
-        <article id="treasureDetail" class="detail"></article>
-        <ul id="treasureLog" class="treasure-log"></ul>
-      </div>
-    </section>
+      <section class="panel">
+        <h2>事件日志</h2>
+        <ul id="eventLog" class="log"></ul>
+      </section>
+    </aside>
   </main>
-
-  <footer class="footer">
-    <small>Prototype v0.4 · 角色创建 + BSC 接口 + 10亿代币经济学</small>
-  </footer>
 
   <script src="app.js"></script>
 </body>
